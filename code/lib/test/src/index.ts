@@ -11,7 +11,8 @@ import {
   resetAllMocks,
   restoreAllMocks,
 } from './spy';
-import { type queries, within } from './testing-library';
+import { type queries, within, userEvent } from './testing-library';
+import { mouseTo } from './demo-mode';
 
 export * from './spy';
 
@@ -20,8 +21,7 @@ type Queries = ReturnType<typeof within<typeof queries>>;
 declare module '@storybook/csf' {
   interface Canvas extends Queries {}
   interface StoryContext {
-    // TODO enable this in a later PR, once we have time to QA this properly
-    //   userEvent: ReturnType<typeof userEvent.setup>;
+    userEvent: ReturnType<typeof userEvent.setup>;
   }
 }
 
@@ -101,8 +101,31 @@ const nameSpiesAndWrapActionsInSpies: LoaderFunction = ({ initialArgs }) => {
 const enhanceContext: LoaderFunction = (context) => {
   if (globalThis.HTMLElement && context.canvasElement instanceof globalThis.HTMLElement) {
     context.canvas = within(context.canvasElement);
-    // TODO enable this in a later PR, once we have time to QA this properly
-    // context.userEvent = userEvent.setup();
+    const user = userEvent.setup({
+      delay: context.parameters.test?.demoMode ? 50 : 0,
+    });
+    context.userEvent = {
+      ...user,
+      type: context.parameters.test?.inputDemoMode
+        ? async (...params) => {
+            const [element, text, options] = params;
+            await mouseTo(element, {
+              cursorStyle: context.parameters.test?.cursorStyle,
+              delay: context.parameters.test?.demoModeDelay,
+            });
+            return user.type(element, text, options);
+          }
+        : user.click,
+      click: context.parameters.test?.demoMode
+        ? async (target) => {
+            await mouseTo(target, {
+              cursorStyle: context.parameters.test?.cursorStyle,
+              delay: context.parameters.test?.demoModeDelay,
+            });
+            return user.click(target);
+          }
+        : user.click,
+    };
   }
 };
 
